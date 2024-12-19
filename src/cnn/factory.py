@@ -38,28 +38,33 @@ def get_transforms(cfg):
     return A.Compose(transforms)
 
 
-def get_model(cfg):
+import os
+import torch
 
+def get_model(cfg):
     log(f'model: {cfg.model.name}')
     log(f'pretrained: {cfg.model.pretrained}')
 
-    if cfg.model.name.endswith('_wsl'):
-        model = torch.hub.load('facebookresearch/WSL-Images', cfg.model.name)
-        model.fc = torch.nn.Linear(2048, cfg.model.n_output)
-        return model
-    elif cfg.model.name.startswith('efficientnet'):
-        from efficientnet_pytorch import EfficientNet
-        model = EfficientNet.from_pretrained(cfg.model.name, num_classes=cfg.model.n_output)
-        #model.set_swish(memory_efficient=False)
-        #model._fc = torch.nn.Linear(1280, cfg.model.n_output)
-        return model
+    local_model_path_50 = '/kaggle/input/your-dataset/se_resnext50_32x4d-a260b3a4.pth'
+    local_model_path_101 = '/kaggle/input/your-dataset/se_resnext101_32x4d-3b2fe3d8.pth'
 
-    try:
-        model_func = pretrainedmodels.__dict__[cfg.model.name]
-    except KeyError as e:
-        model_func = eval(cfg.model.name)
+    if cfg.model.name == 'se_resnext50_32x4d' and os.path.exists(local_model_path_50):
+        log('Loading se_resnext50 from local cache')
+        model = pretrainedmodels.__dict__['se_resnext50_32x4d'](num_classes=1000, pretrained=None)
+        model.load_state_dict(torch.load(local_model_path_50))
+    elif cfg.model.name == 'se_resnext101_32x4d' and os.path.exists(local_model_path_101):
+        log('Loading se_resnext101 from local cache')
+        model = pretrainedmodels.__dict__['se_resnext101_32x4d'](num_classes=1000, pretrained=None)
+        model.load_state_dict(torch.load(local_model_path_101))
+    else:
+        try:
+            model_func = pretrainedmodels.__dict__[cfg.model.name]
+        except KeyError:
+            model_func = eval(cfg.model.name)
 
-    model = model_func(num_classes=1000, pretrained=cfg.model.pretrained)
+        model = model_func(num_classes=1000, pretrained=cfg.model.pretrained)
+
+    # Custom last layers
     model.avg_pool = nn.AdaptiveAvgPool2d(1)
     model.last_linear = nn.Linear(
         model.last_linear.in_features,
